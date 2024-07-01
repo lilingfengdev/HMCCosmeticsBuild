@@ -27,9 +27,7 @@ import com.hibiscusmc.hmccosmetics.user.manager.UserWardrobeManager;
 import com.hibiscusmc.hmccosmetics.util.HMCCInventoryUtils;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
 import com.hibiscusmc.hmccosmetics.util.packets.HMCCPacketManager;
-import me.lojosho.hibiscuscommons.api.events.HibiscusHookReload;
-import me.lojosho.hibiscuscommons.api.events.HibiscusPlayerUnVanishEvent;
-import me.lojosho.hibiscuscommons.api.events.HibiscusPlayerVanishEvent;
+import me.lojosho.hibiscuscommons.api.events.*;
 import me.lojosho.hibiscuscommons.hooks.items.HookItemAdder;
 import me.lojosho.hibiscuscommons.util.packets.PacketManager;
 import org.bukkit.Bukkit;
@@ -209,7 +207,7 @@ public class PlayerGameListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
-    public void onPlayerLook(PlayerMoveEvent event) {
+    public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
         CosmeticUser user = CosmeticUsers.getUser(player);
         if (user == null) return;
@@ -287,6 +285,7 @@ public class PlayerGameListener implements Listener {
             return;
         }
         Bukkit.getScheduler().runTaskLater(HMCCosmeticsPlugin.getInstance(), () -> {
+            if (user.getEntity() == null) return; // Player has likely logged off
             user.updateCosmetic(CosmeticSlot.OFFHAND);
             List<Player> viewers = HMCCPacketManager.getViewers(user.getEntity().getLocation());
             if (viewers.isEmpty()) return;
@@ -327,9 +326,11 @@ public class PlayerGameListener implements Listener {
 
         event.getPlayer().getInventory().setItem(event.getPreviousSlot(), event.getPlayer().getInventory().getItem(event.getPreviousSlot()));
         //NMSHandlers.getHandler().slotUpdate(event.getPlayer(), event.getPreviousSlot());
-        Bukkit.getScheduler().runTaskLater(HMCCosmeticsPlugin.getInstance(), () -> {
-            user.updateCosmetic(CosmeticSlot.MAINHAND);
-        }, 2);
+        if (user.hasCosmeticInSlot(CosmeticSlot.MAINHAND)) {
+            Bukkit.getScheduler().runTaskLater(HMCCosmeticsPlugin.getInstance(), () -> {
+                user.updateCosmetic(CosmeticSlot.MAINHAND);
+            }, 2);
+        }
 
         // #84, Riptides mess with backpacks
         ItemStack currentItem = event.getPlayer().getInventory().getItem(event.getNewSlot());
@@ -440,6 +441,21 @@ public class PlayerGameListener implements Listener {
         }
     }
 
+    // These emote mostly handles emotes from other plugins, such as ItemsAdder
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onPlayerPlayEmote(HibiscusPlayerEmotePlayEvent event) {
+        CosmeticUser user = CosmeticUsers.getUser(event.getPlayer());
+        if (user == null) return;
+        user.hideCosmetics(CosmeticUser.HiddenReason.EMOTE);
+    }
+
+    @EventHandler(priority = EventPriority.LOW)
+    public void onPlayerEndEmote(HibiscusPlayerEmoteEndEvent event) {
+        CosmeticUser user = CosmeticUsers.getUser(event.getPlayer());
+        if (user == null) return;
+        user.showCosmetics(CosmeticUser.HiddenReason.EMOTE);
+    }
+
     private void registerInventoryClickListener() {
         ProtocolLibrary.getProtocolManager().addPacketListener(new PacketAdapter(HMCCosmeticsPlugin.getInstance(), ListenerPriority.NORMAL, PacketType.Play.Client.WINDOW_CLICK) {
             @Override
@@ -486,6 +502,10 @@ public class PlayerGameListener implements Listener {
                 if (!user.isInWardrobe()) {
                     for (Cosmetic cosmetic : user.getCosmetics()) {
                         if ((cosmetic instanceof CosmeticArmorType cosmeticArmorType)) {
+                            boolean requireEmpty = Settings.getSlotOption(cosmeticArmorType.getEquipSlot()).isRequireEmpty();
+                            boolean isAir = user.getPlayer().getInventory().getItem(cosmeticArmorType.getEquipSlot()).getType().isAir();
+                            MessagesUtil.sendDebugMessages("Menu Fired (Checks) - " + cosmeticArmorType.getId() + " - " + requireEmpty + " - " + isAir);
+                            if (requireEmpty && !isAir) continue;
                             items.put(HMCCInventoryUtils.getPacketArmorSlot(cosmeticArmorType.getEquipSlot()), user.getUserCosmeticItem(cosmeticArmorType));
                         }
                     }
@@ -536,9 +556,14 @@ public class PlayerGameListener implements Listener {
 
                 int slot = event.getPacket().getIntegers().read(2);
                 MessagesUtil.sendDebugMessages("SetSlot Slot " + slot);
-                if (slot == 45 && user.hasCosmeticInSlot(CosmeticSlot.OFFHAND) && player.getInventory().getItemInOffHand().getType().isAir()) {
-                    event.getPacket().getItemModifier().write(0, user.getUserCosmeticItem(CosmeticSlot.OFFHAND));
+                CosmeticSlot cosmeticSlot = HMCCInventoryUtils.NMSCosmeticSlot(slot);
+                EquipmentSlot equipmentSlot = HMCCInventoryUtils.getPacketArmorSlot(slot);
+                if (cosmeticSlot == null || equipmentSlot == null) return;
+                if (!user.hasCosmeticInSlot(cosmeticSlot)) return;
+                if (Settings.getSlotOption(equipmentSlot).isRequireEmpty()) {
+                    if (!player.getInventory().getItem(equipmentSlot).getType().isAir()) return;
                 }
+                event.getPacket().getItemModifier().write(0, user.getUserCosmeticItem(cosmeticSlot));
             }
         });
     }
@@ -563,20 +588,17 @@ public class PlayerGameListener implements Listener {
                             if (user.getPlayer() == event.getPlayer()) continue; // When a player scrolls real fast, it messes up the mainhand. This fixes it
                             armor.set(i, new Pair<>(pair.getFirst(), user.getPlayer().getInventory().getItemInMainHand()));
                         }
-                        case OFFHAND -> {
-                            if (Settings.isCosmeticForceOffhandCosmeticShow() && user.hasCosmeticInSlot(CosmeticSlot.OFFHAND)) {
-                                ItemStack item = user.getUserCosmeticItem(CosmeticSlot.OFFHAND);
-                                if (item == null) continue;
-                                Pair<EnumWrappers.ItemSlot, ItemStack> offhandPair = new Pair<>(EnumWrappers.ItemSlot.OFFHAND, item);
-                                armor.set(i, offhandPair);
-                            }
-                        }
                         default -> {
-                            CosmeticArmorType cosmeticArmor = (CosmeticArmorType) user.getCosmetic(HMCCInventoryUtils.getItemSlotToCosmeticSlot(pair.getFirst()));
+                            EquipmentSlot slot = HMCCInventoryUtils.getEquipmentSlot(pair.getFirst());
+                            CosmeticSlot cosmeticSlot = HMCCInventoryUtils.getItemSlotToCosmeticSlot(pair.getFirst());
+                            if (slot == null || cosmeticSlot == null) continue;
+                            if (Settings.getSlotOption(slot).isRequireEmpty()
+                                    && !user.getPlayer().getInventory().getItem(slot).getType().isAir()) continue;
+                            CosmeticArmorType cosmeticArmor = (CosmeticArmorType) user.getCosmetic(cosmeticSlot);
                             if (cosmeticArmor == null) continue;
                             ItemStack item = user.getUserCosmeticItem(cosmeticArmor);
                             if (item == null) continue;
-                            Pair<EnumWrappers.ItemSlot, ItemStack> armorPair = new Pair<>(HMCCInventoryUtils.itemBukkitSlot(cosmeticArmor.getEquipSlot()), item);
+                            Pair<EnumWrappers.ItemSlot, ItemStack> armorPair = new Pair<>(HMCCInventoryUtils.itemBukkitSlot(slot), item);
                             armor.set(i, armorPair);
                         }
                     }
@@ -623,7 +645,8 @@ public class PlayerGameListener implements Listener {
                 }
                 if (!user.isInWardrobe()) return;
                 if (!user.getWardrobeManager().getWardrobeStatus().equals(UserWardrobeManager.WardrobeStatus.RUNNING)) return;
-                Menu menu = Menus.getDefaultMenu();
+
+                Menu menu = user.getWardrobeManager().getLastOpenMenu();
                 if (menu == null) return;
                 menu.openMenu(user);
                 event.setCancelled(true);

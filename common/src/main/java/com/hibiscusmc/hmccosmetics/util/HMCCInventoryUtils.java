@@ -11,6 +11,9 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class HMCCInventoryUtils {
 
     /**
@@ -153,6 +156,32 @@ public class HMCCInventoryUtils {
         }
     }
 
+    public static EquipmentSlot getEquipmentSlot(@NotNull EnumWrappers.ItemSlot slot) {
+        switch (slot) {
+            case HEAD -> {
+                return EquipmentSlot.HEAD;
+            }
+            case CHEST -> {
+                return EquipmentSlot.CHEST;
+            }
+            case LEGS -> {
+                return EquipmentSlot.LEGS;
+            }
+            case FEET -> {
+                return EquipmentSlot.FEET;
+            }
+            case OFFHAND -> {
+                return EquipmentSlot.OFF_HAND;
+            }
+            case MAINHAND -> {
+                return EquipmentSlot.HAND;
+            }
+            default -> {
+                return null;
+            }
+        }
+    }
+
     public static boolean isCosmeticItem(ItemStack itemStack) {
         if (itemStack == null) return false;
         itemStack = itemStack.clone();
@@ -162,5 +191,13 @@ public class HMCCInventoryUtils {
 
     public static NamespacedKey getCosmeticKey() {
         return new NamespacedKey(HMCCosmeticsPlugin.getInstance(), "cosmetic");
+    }
+
+    /**
+     * This returns all the slots a player can have on them. In 1.20.6+, the enum includes BODY, which is not a valid slot for a player.
+     * @return A list of all the slots a player can have on them
+     */
+    public static List<EquipmentSlot> getPlayerArmorSlots() {
+        return Arrays.asList(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET, EquipmentSlot.OFF_HAND, EquipmentSlot.HAND);
     }
 }

@@ -13,6 +13,7 @@ import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticArmorType;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticBackpackType;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticBalloonType;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticMainhandType;
+import com.hibiscusmc.hmccosmetics.gui.Menus;
 import com.hibiscusmc.hmccosmetics.user.manager.UserBackpackManager;
 import com.hibiscusmc.hmccosmetics.user.manager.UserBalloonManager;
 import com.hibiscusmc.hmccosmetics.user.manager.UserEmoteManager;
@@ -27,8 +28,10 @@ import me.lojosho.hibiscuscommons.util.InventoryUtils;
 import me.lojosho.hibiscuscommons.util.packets.PacketManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
+import org.bukkit.FireworkEffect;
 import org.bukkit.Material;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -68,7 +71,7 @@ public class CosmeticUser {
         Runnable run = () -> {
             MessagesUtil.sendDebugMessages("Tick[uuid=" + uniqueId + "]", Level.INFO);
             updateCosmetic();
-            if (isHidden() && !getUserEmoteManager().isPlayingEmote()) MessagesUtil.sendActionBar(getPlayer(), "hidden-cosmetics");
+            if (isHidden() && !getUserEmoteManager().isPlayingEmote() && !getCosmetics().isEmpty()) MessagesUtil.sendActionBar(getPlayer(), "hidden-cosmetics");
         };
 
         int tickPeriod = Settings.getTickPeriod();
@@ -195,13 +198,17 @@ public class CosmeticUser {
         for (Cosmetic cosmetic : getCosmetics()) {
             if (cosmetic instanceof CosmeticArmorType armorType) {
                 if (getUserEmoteManager().isPlayingEmote() || isInWardrobe()) return;
-                if (!Settings.isCosmeticForceOffhandCosmeticShow()
-                        && armorType.getEquipSlot().equals(EquipmentSlot.OFF_HAND)
-                        && !getPlayer().getInventory().getItemInOffHand().getType().isAir()) continue;
+                if (!(getEntity() instanceof HumanEntity humanEntity)) return;
+
+                boolean requireEmpty = Settings.getSlotOption(armorType.getEquipSlot()).isRequireEmpty();
+                boolean isAir = humanEntity.getInventory().getItem(armorType.getEquipSlot()).getType().isAir();
+                MessagesUtil.sendDebugMessages("updateCosmetic (All) - " + armorType.getId() + " - " + requireEmpty + " - " + isAir);
+                if (requireEmpty && !isAir) continue;
+
                 items.put(HMCCInventoryUtils.getEquipmentSlot(armorType.getSlot()), armorType.getItem(this));
-                continue;
+            } else {
+                updateCosmetic(cosmetic.getSlot());
             }
-            updateCosmetic(cosmetic.getSlot());
         }
         if (items.isEmpty() || getEntity() == null) return;
         PacketManager.equipmentSlotUpdate(getEntity().getEntityId(), items, HMCCPlayerUtils.getNearbyPlayers(getEntity().getLocation()));
@@ -289,6 +296,15 @@ public class CosmeticUser {
                     potionMeta.setColor(color);
                 } else if (itemMeta instanceof MapMeta mapMeta) {
                     mapMeta.setColor(color);
+                } else if (itemMeta instanceof FireworkEffectMeta fireworkMeta) {
+                    fireworkMeta.setEffect(
+                            FireworkEffect.builder()
+                            .with(FireworkEffect.Type.BALL)
+                            .withColor(color)
+                            .trail(false)
+                            .flicker(false)
+                            .build()
+                    );
                 }
             }
             itemMeta.getPersistentDataContainer().set(HMCCInventoryUtils.getCosmeticKey(), PersistentDataType.STRING, cosmetic.getId());
@@ -347,6 +363,7 @@ public class CosmeticUser {
         if (!getWardrobeManager().getWardrobeStatus().equals(UserWardrobeManager.WardrobeStatus.RUNNING)) return;
 
         getWardrobeManager().setWardrobeStatus(UserWardrobeManager.WardrobeStatus.STOPPING);
+        getWardrobeManager().setLastOpenMenu(Menus.getDefaultMenu());
 
         if (WardrobeSettings.isEnabledTransition() && !ejected) {
             MessagesUtil.sendTitle(

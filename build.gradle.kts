@@ -75,7 +75,7 @@ allprojects {
         compileOnly(fileTree("${project.rootDir}/lib") { include("*.jar") })
         compileOnly("com.mojang:authlib:1.5.25")
         //compileOnly("org.spigotmc:spigot-api:1.18.2-R0.1-SNAPSHOT")
-        compileOnly("io.papermc.paper:paper-api:1.18.2-R0.1-SNAPSHOT")
+        compileOnly("io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT")
         compileOnly("org.jetbrains:annotations:23.0.0")
         compileOnly("com.comphenix.protocol:ProtocolLib:5.1.0")
         compileOnly("me.clip:placeholderapi:2.11.3")
@@ -83,18 +83,18 @@ allprojects {
         compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.1.0-SNAPSHOT")
         compileOnly("it.unimi.dsi:fastutil:8.5.11")
         compileOnly("org.projectlombok:lombok:1.18.2")
-        compileOnly("me.lojosho:HibiscusCommons:0.2.2")
+        compileOnly("me.lojosho:HibiscusCommons:0.4.1")
 
         // Handled by Spigot Library Loader
-        compileOnly("net.kyori:adventure-api:4.15.0")
-        compileOnly("net.kyori:adventure-text-minimessage:4.15.0")
-        compileOnly("net.kyori:adventure-platform-bukkit:4.3.2")
+        compileOnly("net.kyori:adventure-api:4.17.0")
+        compileOnly("net.kyori:adventure-text-minimessage:4.17.0")
+        compileOnly("net.kyori:adventure-platform-bukkit:4.3.3")
 
         annotationProcessor("org.projectlombok:lombok:1.18.28")
         testCompileOnly("org.projectlombok:lombok:1.18.28")
         testAnnotationProcessor("org.projectlombok:lombok:1.18.28")
 
-        implementation("dev.triumphteam:triumph-gui:3.1.7") {
+        implementation("dev.triumphteam:triumph-gui:3.1.10") {
             exclude("net.kyori") // Already have adventure API
         }
         implementation("com.owen1212055:particlehelper:1.0.0-SNAPSHOT")
@@ -156,7 +156,7 @@ tasks {
 bukkit {
     load = BukkitPluginDescription.PluginLoadOrder.POSTWORLD
     main = "com.hibiscusmc.hmccosmetics.HMCCosmeticsPlugin"
-    apiVersion = "1.18"
+    apiVersion = "1.19"
     authors = listOf("LoJoSho")
     depend = listOf("HibiscusCommons", "ProtocolLib")
     softDepend = listOf("ModelEngine", "Oraxen", "ItemsAdder", "Geary", "HMCColor", "WorldGuard", "MythicMobs", "PlaceholderAPI", "SuperVanish", "PremiumVanish", "LibsDisguises", "Denizen", "MMOItems", "Eco")

@@ -9,6 +9,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.logging.Level;
 
@@ -48,14 +49,11 @@ public class Settings {
     private static final String COSMETIC_DISABLED_WORLDS_PATH = "disabled-worlds";
     private static final String COSMETIC_PACKET_ENTITY_TELEPORT_COOLDOWN_PATH = "entity-cooldown-teleport-packet";
     private static final String COSMETIC_BACKPACK_FORCE_RIDING_PACKET_PATH = "backpack-force-riding-packet";
-    private static final String COSMETIC_FORCE_OFFHAND_COSMETIC_SHOW_PATH = "offhand-always-show";
-    private static final String COSMETIC_ADD_ENCHANTS_HELMET_PATH = "helmet-add-enchantments";
-    private static final String COSMETIC_ADD_ENCHANTS_CHESTPLATE_PATH = "chest-add-enchantments";
-    private static final String COSMETIC_ADD_ENCHANTS_LEGGINGS_PATH = "leggings-add-enchantments";
-    private static final String COSMETIC_ADD_ENCHANTS_BOOTS_PATH = "boots-add-enchantments";
     private static final String COSMETIC_DESTROY_LOOSE_COSMETIC_PATH = "destroy-loose-cosmetics";
     private static final String COSMETIC_BALLOON_HEAD_FORWARD_PATH = "balloon-head-forward";
     private static final String MENU_SETTINGS_PATH = "menu-settings";
+    private static final String MENU_CLICK_COOLDOWN_PATH = "click-cooldown";
+    private static final String MENU_CLICK_COOLDOWN_TIME_PATH = "time";
     private static final String COSMETIC_TYPE_SETTINGS_PATH = "cosmetic-type";
     private static final String EQUIP_CLICK_TYPE = "equip-click";
     private static final String UNEQUIP_CLICK_TYPE = "unequip-click";
@@ -69,6 +67,7 @@ public class Settings {
     private static final String EQUIPABLE_COSMETIC_COLOR_PATH = "equipable-cosmetic-color";
     private static final String LOCKED_COSMETIC_COLOR_PATH = "locked-cosmetic-color";
     private static final String ENABLED_PATH = "enabled";
+    private static final String SLOT_OPTIONS_PATH = "slot-options";
 
     @Getter
     private static String defaultMenu;
@@ -94,14 +93,7 @@ public class Settings {
     private static boolean worldGuardMoveCheck;
     @Getter
     private static boolean cosmeticEmoteBlockCheck;
-    @Getter
-    private static boolean addHelmetEnchants;
-    @Getter
-    private static boolean addChestplateEnchants;
-    @Getter
-    private static boolean addLeggingEnchants;
-    @Getter
-    private static boolean addBootsEnchants;
+    private static final HashMap<EquipmentSlot, SlotOptionConfig> slotOptions = new HashMap<>();
     @Getter
     private static boolean emoteAirCheck;
     @Getter
@@ -112,8 +104,6 @@ public class Settings {
     private static boolean destroyLooseCosmetics;
     @Getter
     private static boolean backpackForceRidingEnabled;
-    @Getter
-    private static boolean cosmeticForceOffhandCosmeticShow;
     @Getter
     private static boolean emotesEnabled;
     @Getter
@@ -130,6 +120,10 @@ public class Settings {
     private static int tickPeriod;
     @Getter
     private static int packetEntityTeleportCooldown;
+    @Getter
+    private static Long defaultMenuCooldown;
+    @Getter
+    private static boolean menuClickCooldown;
     @Getter
     private static double emoteDistance;
     @Getter
@@ -202,19 +196,30 @@ public class Settings {
         emoteInvincible = cosmeticSettings.node(COSMETIC_EMOTE_INVINCIBLE_PATH).getBoolean(false);
         destroyLooseCosmetics = cosmeticSettings.node(COSMETIC_DESTROY_LOOSE_COSMETIC_PATH).getBoolean(false);
         backpackForceRidingEnabled = cosmeticSettings.node(COSMETIC_BACKPACK_FORCE_RIDING_PACKET_PATH).getBoolean(false);
-        addHelmetEnchants = cosmeticSettings.node(COSMETIC_ADD_ENCHANTS_HELMET_PATH).getBoolean(false);
-        addChestplateEnchants = cosmeticSettings.node(COSMETIC_ADD_ENCHANTS_CHESTPLATE_PATH).getBoolean(false);
-        addLeggingEnchants = cosmeticSettings.node(COSMETIC_ADD_ENCHANTS_LEGGINGS_PATH).getBoolean(false);
-        addBootsEnchants = cosmeticSettings.node(COSMETIC_ADD_ENCHANTS_BOOTS_PATH).getBoolean(false);
+
+        cosmeticSettings.node(SLOT_OPTIONS_PATH).childrenMap().forEach((key, value) -> {
+            EquipmentSlot slot = convertConfigToEquipment(key.toString().toLowerCase());
+            if (slot == null) {
+                MessagesUtil.sendDebugMessages("Invalid slot option: " + key, Level.WARNING);
+                return;
+            }
+            boolean addEnchantments = value.node("add-enchantments").getBoolean(false);
+            boolean requireEmpty = value.node("require-empty").getBoolean(false);
+            slotOptions.put(slot, new SlotOptionConfig(slot, addEnchantments, requireEmpty));
+        });
+
         tickPeriod = cosmeticSettings.node(TICK_PERIOD_PATH).getInt(-1);
         viewDistance = cosmeticSettings.node(VIEW_DISTANCE_PATH).getInt(-3);
         emoteCameraEnabled = cosmeticSettings.node(COSMETIC_EMOTE_CAMERA_PATH).getBoolean(true);
         emoteMoveCheck = cosmeticSettings.node(COSMETIC_EMOTE_MOVE_CHECK_PATH).getBoolean(false);
         packetEntityTeleportCooldown = cosmeticSettings.node(COSMETIC_PACKET_ENTITY_TELEPORT_COOLDOWN_PATH).getInt(-1);
-        cosmeticForceOffhandCosmeticShow = cosmeticSettings.node(COSMETIC_FORCE_OFFHAND_COSMETIC_SHOW_PATH).getBoolean(false);
         balloonHeadForward = cosmeticSettings.node(COSMETIC_BALLOON_HEAD_FORWARD_PATH).getBoolean(false);
 
         ConfigurationNode menuSettings = source.node(MENU_SETTINGS_PATH);
+
+        ConfigurationNode clickCooldownSettings = menuSettings.node(MENU_CLICK_COOLDOWN_PATH);
+        menuClickCooldown = clickCooldownSettings.node(ENABLED_PATH).getBoolean(true);
+        defaultMenuCooldown = clickCooldownSettings.node(MENU_CLICK_COOLDOWN_TIME_PATH).getLong(1000L);
 
         ConfigurationNode shadingSettings = menuSettings.node(SHADING_PATH);
         defaultShading = shadingSettings.node(ENABLED_PATH).getBoolean();
@@ -257,24 +262,9 @@ public class Settings {
         return new Vector(config.node("x").getDouble(), config.node("y").getDouble(), config.node("z").getDouble());
     }
 
-    public static boolean getShouldAddEnchants(EquipmentSlot slot) {
-        switch (slot) {
-            case HEAD -> {
-                return addHelmetEnchants;
-            }
-            case CHEST -> {
-                return addChestplateEnchants;
-            }
-            case LEGS -> {
-                return addLeggingEnchants;
-            }
-            case FEET -> {
-                return addBootsEnchants;
-            }
-            default -> {
-                return false;
-            }
-        }
+    public static SlotOptionConfig getSlotOption(EquipmentSlot slot) {
+        if (!slotOptions.containsKey(slot)) slotOptions.put(slot, new SlotOptionConfig(slot, false, false));
+        return slotOptions.get(slot);
     }
 
     public static void setDebugMode(boolean newSetting) {
@@ -285,5 +275,17 @@ public class Settings {
         plugin.getConfig().set("debug-mode", newSetting);
 
         plugin.saveConfig();
+    }
+
+    private static EquipmentSlot convertConfigToEquipment(String slot) {
+        return switch (slot) {
+            case "helmet" -> EquipmentSlot.HEAD;
+            case "chestplate" -> EquipmentSlot.CHEST;
+            case "leggings" -> EquipmentSlot.LEGS;
+            case "boots" -> EquipmentSlot.FEET;
+            case "offhand" -> EquipmentSlot.OFF_HAND;
+            case "mainhand" -> EquipmentSlot.HAND;
+            default -> null;
+        };
     }
 }
